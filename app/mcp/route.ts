@@ -18,6 +18,10 @@ const CORS_HEADERS = {
 
 type JsonRpcId = string | number | null;
 
+function coerceJsonRpcId(value: unknown): JsonRpcId {
+  return typeof value === "string" || typeof value === "number" ? value : null;
+}
+
 type JsonRpcRequest = {
   jsonrpc: "2.0";
   id?: JsonRpcId;
@@ -196,14 +200,15 @@ async function handleMessage(message: unknown) {
     return makeError(null, -32600, "Invalid Request", "Expected JSON object.");
   }
 
+  const hasId = Object.prototype.hasOwnProperty.call(message, "id");
+  const id = hasId ? coerceJsonRpcId(message.id) : null;
+  const requestId = hasId ? String(id) : "notification";
+
   if (message.jsonrpc !== "2.0") {
-    return makeError(message.id ?? null, -32600, "Invalid Request", "Missing jsonrpc: '2.0'.");
+    return makeError(id, -32600, "Invalid Request", "Missing jsonrpc: '2.0'.");
   }
 
   const method = typeof message.method === "string" ? message.method : "";
-  const hasId = Object.prototype.hasOwnProperty.call(message, "id");
-  const id = hasId ? (message.id as JsonRpcId) : null;
-  const requestId = hasId ? String(id) : "notification";
 
   if (!method) {
     return makeError(id, -32600, "Invalid Request", "Missing method.");
