@@ -52,7 +52,6 @@ export const summarizeInputSchema = z.object({
   source_canvas_name: trimmedString.optional(),
   context: contextSchema,
   output_format: z.enum(["exec_bullets", "se_deal_update", "memo"]),
-  push_to_doc: z.boolean().optional().default(false),
   doc_title: trimmedString.optional()
 });
 

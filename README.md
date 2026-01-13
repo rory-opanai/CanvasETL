@@ -8,7 +8,7 @@ A production-ready MCP server that validates structured context payloads and ret
 
 ## Tools
 - `healthcheck`: returns `{ version, uptime, server_time }`.
-- `summarize_context`: validates a structured payload, normalizes missing arrays to `[]`, and returns a markdown summary (plus optional structured JSON).
+- `summarize_context`: validates a structured payload, normalizes missing arrays to `[]`, pushes the generated summary into the configured Google Doc webhook, and returns only a push status (not the summary text).
 
 ## Local Development
 ```bash
@@ -52,6 +52,7 @@ curl -s -X POST "$APP_BASE_URL/mcp" \
         "deal_id": "D-123",
         "deal_name": "Acme Expansion",
         "source_canvas_name": "Acme Canvas",
+        "doc_title": "Acme Expansion (POC)",
         "context": {
           "summary": "Renewal in negotiation with pricing sensitivity.",
           "key_points": ["Security review complete", "Procurement wants 5% discount"],
@@ -70,3 +71,5 @@ curl -s -X POST "$APP_BASE_URL/mcp" \
 
 ## Required Environment Variables
 - `APP_BASE_URL`: Base URL for deployment (used for configuration checks and documentation).
+- `DOC_WEBHOOK_URL`: Google Apps Script Web App URL (required; used to push summaries into a Google Doc).
+- `DOC_WEBHOOK_TOKEN`: Shared secret token expected by the Apps Script webhook (required).

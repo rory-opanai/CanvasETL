@@ -94,7 +94,6 @@ const TOOL_DEFS = [
         deal_id: { type: "string" },
         deal_name: { type: "string" },
         source_canvas_name: { type: "string" },
-        push_to_doc: { type: "boolean" },
         doc_title: { type: "string" },
         context: {
           type: "object",
@@ -328,25 +327,17 @@ async function handleMessage(message: unknown) {
         }
 
         const summaryText = formatSummary(parsed.data);
-        let docPushNote = "";
-        if (parsed.data.push_to_doc) {
-          const title =
-            parsed.data.doc_title ??
-            parsed.data.deal_name ??
-            parsed.data.deal_id ??
-            "CanvasETL Summary";
-          const pushResult = await pushSummaryToDocWebhook({
-            requestId,
-            title,
-            text: summaryText
-          });
-          if (pushResult.ok) {
-            docPushNote = "\n\n---\nDoc push: ok";
-            log("info", "mcp.doc_push.ok", { request_id: requestId });
-          } else {
-            docPushNote = `\n\n---\nDoc push: failed\n${pushResult.error}`;
-            log("error", "mcp.doc_push.failed", { request_id: requestId, error: pushResult.error });
-          }
+        const title =
+          parsed.data.doc_title ?? parsed.data.deal_name ?? parsed.data.deal_id ?? "CanvasETL Summary";
+        const pushResult = await pushSummaryToDocWebhook({
+          requestId,
+          title,
+          text: summaryText
+        });
+        if (pushResult.ok) {
+          log("info", "mcp.doc_push.ok", { request_id: requestId });
+        } else {
+          log("error", "mcp.doc_push.failed", { request_id: requestId, error: pushResult.error });
         }
         log("info", "mcp.tools.call.summarize_context", {
           request_id: requestId,
@@ -355,8 +346,13 @@ async function handleMessage(message: unknown) {
           ...getContextStats(parsed.data)
         });
         return makeResult(id, {
-          content: [{ type: "text", text: `${summaryText}${docPushNote}` }],
-          isError: false
+          content: [
+            {
+              type: "text",
+              text: pushResult.ok ? `Doc push: ok\nTitle: ${title}` : `Doc push: failed\n${pushResult.error}`
+            }
+          ],
+          isError: !pushResult.ok
         });
       }
 
