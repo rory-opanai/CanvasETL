@@ -22,6 +22,48 @@ function coerceJsonRpcId(value: unknown): JsonRpcId {
   return typeof value === "string" || typeof value === "number" ? value : null;
 }
 
+function getDocWebhookConfig() {
+  const url = process.env.DOC_WEBHOOK_URL;
+  const token = process.env.DOC_WEBHOOK_TOKEN;
+  if (!url || !token) {
+    return null;
+  }
+  return { url, token };
+}
+
+async function pushSummaryToDocWebhook(input: { requestId: string; title: string; text: string }) {
+  const cfg = getDocWebhookConfig();
+  if (!cfg) {
+    return { ok: false as const, error: "DOC_WEBHOOK_URL / DOC_WEBHOOK_TOKEN not configured." };
+  }
+
+  try {
+    const res = await fetch(cfg.url, {
+      method: "POST",
+      // Apps Script web apps frequently respond with redirects; avoid auto-follow because
+      // follow can convert POST -> GET and drop the body. We treat 3xx as success.
+      redirect: "manual",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: cfg.token,
+        title: input.title,
+        text: input.text,
+        source: "CanvasETL"
+      })
+    });
+
+    const ok = res.status >= 200 && res.status < 400;
+    if (!ok) {
+      const body = await res.text().catch(() => "");
+      return { ok: false as const, error: `Webhook HTTP ${res.status}: ${body.slice(0, 300)}` };
+    }
+
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: String(error) };
+  }
+}
+
 type JsonRpcRequest = {
   jsonrpc: "2.0";
   id?: JsonRpcId;
@@ -52,6 +94,8 @@ const TOOL_DEFS = [
         deal_id: { type: "string" },
         deal_name: { type: "string" },
         source_canvas_name: { type: "string" },
+        push_to_doc: { type: "boolean" },
+        doc_title: { type: "string" },
         context: {
           type: "object",
           properties: {
@@ -284,6 +328,26 @@ async function handleMessage(message: unknown) {
         }
 
         const summaryText = formatSummary(parsed.data);
+        let docPushNote = "";
+        if (parsed.data.push_to_doc) {
+          const title =
+            parsed.data.doc_title ??
+            parsed.data.deal_name ??
+            parsed.data.deal_id ??
+            "CanvasETL Summary";
+          const pushResult = await pushSummaryToDocWebhook({
+            requestId,
+            title,
+            text: summaryText
+          });
+          if (pushResult.ok) {
+            docPushNote = "\n\n---\nDoc push: ok";
+            log("info", "mcp.doc_push.ok", { request_id: requestId });
+          } else {
+            docPushNote = `\n\n---\nDoc push: failed\n${pushResult.error}`;
+            log("error", "mcp.doc_push.failed", { request_id: requestId, error: pushResult.error });
+          }
+        }
         log("info", "mcp.tools.call.summarize_context", {
           request_id: requestId,
           tool: name,
@@ -291,7 +355,7 @@ async function handleMessage(message: unknown) {
           ...getContextStats(parsed.data)
         });
         return makeResult(id, {
-          content: [{ type: "text", text: summaryText }],
+          content: [{ type: "text", text: `${summaryText}${docPushNote}` }],
           isError: false
         });
       }
